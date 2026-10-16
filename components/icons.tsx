@@ -53,27 +53,9 @@ export const IconSwap = (p: P) => (
   </svg>
 );
 
-export const IconChevron = (p: P) => (
-  <svg {...base(p)}>
-    <path d="m9 6 6 6-6 6" />
-  </svg>
-);
-
 export const IconClose = (p: P) => (
   <svg {...base(p)}>
     <path d="M6 6l12 12M18 6 6 18" />
-  </svg>
-);
-
-export const IconPlus = (p: P) => (
-  <svg {...base(p)}>
-    <path d="M12 5v14M5 12h14" />
-  </svg>
-);
-
-export const IconBack = (p: P) => (
-  <svg {...base(p)}>
-    <path d="M15 6l-6 6 6 6" />
   </svg>
 );
 
@@ -88,19 +70,5 @@ export const IconBackspace = (p: P) => (
   <svg {...base(p)}>
     <path d="M9 5h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9L2 12z" />
     <path d="m12 9 6 6M18 9l-6 6" />
-  </svg>
-);
-
-export const IconClock = (p: P) => (
-  <svg {...base(p)}>
-    <circle cx="12" cy="12" r="9" />
-    <path d="M12 7v5l3 2" />
-  </svg>
-);
-
-export const IconInfo = (p: P) => (
-  <svg {...base(p)}>
-    <circle cx="12" cy="12" r="9" />
-    <path d="M12 11v5M12 8h.01" />
   </svg>
 );

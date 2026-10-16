@@ -1,106 +1,131 @@
 // lib/prices.ts
-// Live FX price feed. Primary: Frankfurter (ECB reference rates, free, no key).
-// Fallback: open.er-api.com (free, no key). Final fallback: bundled static rates
-// so the calculator always works offline.
+// REST price sources, all free and keyless. The streaming sources live in lib/feeds.ts
+// and lib/market.ts decides which one wins for each currency.
+//
+// • Daily reference FX: open.er-api.com (covers every currency in the app), gaps filled
+//   from Frankfurter (ECB). Falls back to a dated bundled snapshot when both fail.
+// • ~1-minute FX + crypto: Coinbase's public exchange-rates endpoint (fiat and crypto,
+//   cached by Coinbase for about 60 s).
+// • Gold/silver spot fallback: gold-api.com.
 
-export type RateMap = Record<string, number>; // units of quote per 1 USD
+export type RateMap = Record<string, number>; // units of currency per 1 USD
 
-// Static fallback (approx.). Used only when both live feeds are unreachable.
-export const STATIC_USD_RATES: RateMap = {
-  USD: 1, EUR: 0.92, GBP: 0.79, JPY: 157, AUD: 1.52, CAD: 1.37, CHF: 0.88,
-  NZD: 1.66, CNH: 7.26, CNY: 7.24, CZK: 23.2, DKK: 6.87, HUF: 360, ILS: 3.72,
-  HKD: 7.81, KRW: 1370, MXN: 17.1, NOK: 10.7, PLN: 3.98, RUB: 92, SEK: 10.5,
-  SGD: 1.34, TRY: 32.3, ZAR: 18.4,
+export interface RateSnapshot {
+  rates: RateMap;
+  source: "live" | "offline";
+  /** ISO date (YYYY-MM-DD) the rates were published */
+  asOf: string;
+  provider: string;
+}
+
+// Bundled snapshot from open.er-api.com, 2026-10-16. Used only when both feeds fail.
+export const STATIC_RATES: RateSnapshot = {
+  rates: {
+    USD: 1, EUR: 0.89165, GBP: 0.754053, JPY: 158.087, AUD: 1.44602, CAD: 1.41915, CHF: 0.828286,
+    NZD: 1.78076, CNH: 6.6901, CZK: 21.7151, DKK: 6.66897, HUF: 324.418, ILS: 3.1004, HKD: 7.84743,
+    KRW: 1342.74, MXN: 18.4572, NOK: 9.48281, PLN: 3.89682, RUB: 83.8738, SEK: 9.9599, SGD: 1.28234,
+    TRY: 49.4803, ZAR: 16.5235, AED: 3.6725, ARS: 1513.93, BDT: 123.136, BRL: 5.05445, CLP: 985.501,
+    COP: 3184.57, EGP: 53.4645, IDR: 17949.1, INR: 95.1001, ISK: 121.592, KES: 129.751, KWD: 0.310459,
+    MYR: 4.08249, NGN: 1331.19, PHP: 63.0843, PKR: 276.983, QAR: 3.64, RON: 4.75949, SAR: 3.75,
+    THB: 33.5261, TWD: 32.3603, VND: 25856.5,
+  },
+  source: "offline",
+  asOf: "2026-10-16",
+  provider: "bundled snapshot",
 };
 
-// Currency codes the app uses that differ from the feed's code for the same unit.
-const CODE_ALIAS: Record<string, string> = { CNH: "CNY" };
-
-/** Resolve an app currency code to the feed's code (CNH -> CNY, else identity). */
-export function feedCode(code: string): string {
-  return CODE_ALIAS[code] ?? code;
-}
-
-/** True when the feed has a rate for this code (commodities/crypto do not). */
-export function hasRate(rates: RateMap, code: string): boolean {
-  return Number.isFinite(rates[feedCode(code)]);
-}
-
-export interface PriceQuote {
-  /** USD per 1 unit of the currency (i.e. 1 / rate) */
-  usdPer: (code: string) => number;
-  source: "frankfurter" | "er-api" | "static";
-  date: string;
-}
-
-async function fetchFrankfurter(): Promise<{ rates: RateMap; date: string } | null> {
+// gold-api.com can take ~8s on a cold request.
+async function getJson(url: string, timeoutMs = 12000): Promise<unknown> {
   try {
-    const r = await fetch("https://api.frankfurter.dev/v1/latest?base=USD", { cache: "no-store" });
-    if (!r.ok) return null;
-    const j = await r.json();
-    // j.rates: { EUR: 0.92, ... } quote per 1 USD
-    return { rates: { USD: 1, ...j.rates }, date: j.date ?? "" };
+    const r = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(timeoutMs) });
+    return r.ok ? await r.json() : null;
   } catch {
     return null;
   }
 }
 
-async function fetchErApi(): Promise<{ rates: RateMap; date: string } | null> {
-  try {
-    const r = await fetch("https://open.er-api.com/v6/latest/USD", { cache: "no-store" });
-    if (!r.ok) return null;
-    const j = await r.json();
-    if (j.result !== "success") return null;
-    return { rates: { USD: 1, ...j.rates }, date: (j.time_last_update_utc || "").slice(0, 16) };
-  } catch {
-    return null;
+/** Keep positive finite numbers; numeric strings (Coinbase) are accepted too. */
+function cleanRates(raw: unknown): RateMap {
+  const out: RateMap = {};
+  if (raw && typeof raw === "object") {
+    for (const [k, v] of Object.entries(raw)) {
+      const n = typeof v === "string" ? Number(v) : v;
+      if (typeof n === "number" && Number.isFinite(n) && n > 0) out[k] = n;
+    }
   }
+  return out;
 }
 
-export async function loadPrices(): Promise<PriceQuote> {
-  // Server-side works; client-side may hit CORS but both endpoints allow it.
-  const ff = await fetchFrankfurter();
-  if (ff) {
-    return { usdPer: (c) => (ff.rates[c] ? 1 / ff.rates[c] : 1), source: "frankfurter", date: ff.date };
-  }
-  const er = await fetchErApi();
-  if (er) {
-    return { usdPer: (c) => (er.rates[c] ? 1 / er.rates[c] : 1), source: "er-api", date: er.date };
-  }
+async function fetchErApi(): Promise<{ rates: RateMap; asOf: string } | null> {
+  const j = (await getJson("https://open.er-api.com/v6/latest/USD")) as
+    | { result?: string; rates?: unknown; time_last_update_unix?: number }
+    | null;
+  if (!j || j.result !== "success") return null;
+  const asOf = j.time_last_update_unix ? new Date(j.time_last_update_unix * 1000).toISOString().slice(0, 10) : "";
+  return { rates: cleanRates(j.rates), asOf };
+}
+
+async function fetchFrankfurter(): Promise<{ rates: RateMap; asOf: string } | null> {
+  const j = (await getJson("https://api.frankfurter.dev/v1/latest?base=USD")) as
+    | { rates?: unknown; date?: string }
+    | null;
+  if (!j) return null;
+  const rates = cleanRates(j.rates);
+  // ECB publishes onshore CNY only; offshore CNH tracks it closely.
+  if (rates.CNY && !rates.CNH) rates.CNH = rates.CNY;
+  return { rates, asOf: j.date ?? "" };
+}
+
+/** Daily reference rates (never throws; falls back to the bundled snapshot). */
+export async function loadRates(): Promise<RateSnapshot> {
+  const [er, ff] = await Promise.all([fetchErApi(), fetchFrankfurter()]);
+  if (!er && !ff) return STATIC_RATES;
   return {
-    usdPer: (c) => (STATIC_USD_RATES[c] ? 1 / STATIC_USD_RATES[c] : 1),
-    source: "static",
-    date: "offline",
+    rates: { ...ff?.rates, ...er?.rates, USD: 1 },
+    source: "live",
+    asOf: er?.asOf || ff?.asOf || "",
+    provider: er && ff ? "open.er-api + ECB" : er ? "open.er-api" : "ECB (Frankfurter)",
   };
 }
 
-/**
- * Convert a live rate map into a pair price for the calculator.
- * price(base/quote) = units of quote per 1 base
- *                   = (quote per USD) / (base per USD)
- */
-export function pairPrice(rates: RateMap, base: string, quote: string): number {
-  const b = rates[feedCode(base)];
-  const q = rates[feedCode(quote)];
-  if (!b || !q) return 1;
-  return q / b;
+/** Coinbase rates: units per 1 USD for ~650 fiat and crypto codes, or null on failure. */
+export async function loadMinuteRates(): Promise<RateMap | null> {
+  const j = (await getJson("https://api.coinbase.com/v2/exchange-rates?currency=USD")) as
+    | { data?: { rates?: unknown } }
+    | null;
+  const rates = cleanRates(j?.data?.rates);
+  return Object.keys(rates).length ? { ...rates, USD: 1 } : null;
+}
+
+/** USD spot price for gold or silver from gold-api.com; undefined otherwise or on failure. */
+export async function loadMetalSpot(code: string): Promise<number | undefined> {
+  if (code !== "XAU" && code !== "XAG") return undefined;
+  const j = (await getJson(`https://api.gold-api.com/price/${code}`)) as { price?: number } | null;
+  return typeof j?.price === "number" && j.price > 0 ? j.price : undefined;
+}
+
+/** Units of `code` per 1 USD, or undefined when the map has no rate for it. */
+export function rateOf(rates: RateMap, code: string): number | undefined {
+  const r = rates[code];
+  return Number.isFinite(r) && r > 0 ? r : undefined;
+}
+
+/** Price of base/quote (units of quote per 1 base), or undefined when either rate is missing. */
+export function pairPrice(rates: RateMap, base: string, quote: string): number | undefined {
+  const b = rateOf(rates, base);
+  const q = rateOf(rates, quote);
+  return b && q ? q / b : undefined;
 }
 
 /**
- * How many units of `quote` are worth one unit of `account` currency.
- * quotePerAccount = (quote per USD) / (account per USD)
+ * Account-currency value of 1 unit of `quote` — the factor that turns a pip value
+ * (always denominated in the quote currency) into the account currency.
+ * Exactly 1 when they are the same currency, whatever the feed says.
  */
-export function quoteToAccountRate(rates: RateMap, quote: string, account: string): number {
-  const q = rates[feedCode(quote)];
-  const a = rates[feedCode(account)];
-  if (!q || !a) return 1;
-  return q / a;
+export function accountPerQuote(rates: RateMap | undefined, quote: string, account: string): number | undefined {
+  if (quote === account) return 1;
+  if (!rates) return undefined;
+  const q = rateOf(rates, quote);
+  const a = rateOf(rates, account);
+  return q && a ? a / q : undefined;
 }
-
-// Default price hints for displaying the currency rows before live data loads.
-export const DEFAULT_PAIRS: { pair: string; price: number }[] = [
-  { pair: "EUR/USD", price: 1.0850 },
-  { pair: "GBP/USD", price: 1.2650 },
-  { pair: "USD/JPY", price: 157.0 },
-  { pair: "AUD/USD", price: 0.6600 },
-];
