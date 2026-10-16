@@ -1,26 +1,87 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* STINU clone theme — colors sampled from the original app's screenshots. */
+@theme {
+  --color-navy: #1c4055;
+  --color-navy-deep: #17242f;
+  --color-teal: #2e7c91;
+  --color-teal-light: #3e8ca6;
+  --color-teal-headline: #357e96;
+  --color-ink: #1c2b3a;
+  --color-ink-soft: #2c3941;
+  --color-muted: #9ca3a7;
+  --color-paper: #f4f3ef;
+  --color-sel: #1f4f60;
+
+  --color-bg-top: #eaf1fb;
+  --color-bg-mid: #dbe7f5;
+  --color-bg-bottom: #c6d8ee;
+
+  --radius-card: 28px;
+  --radius-tile: 16px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  font-family: var(--font-poppins), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+.app-bg {
+  background: linear-gradient(180deg, #eaf1fb 0%, #dbe7f5 45%, #c6d8ee 100%);
+}
+
+/* Slanted navy header used across the select sheets. */
+.header-slant {
+  background: var(--color-navy);
+  clip-path: polygon(0 0, 100% 0, 100% 78%, 0 100%);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Custom on-screen keypad (mirrors the app's KeyboardView). */
+.keypad-key {
+  transition: background-color 0.08s ease, transform 0.08s ease;
+}
+.keypad-key:active {
+  background-color: rgba(28, 64, 85, 0.12);
+  transform: scale(0.97);
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.animate-sheet {
+  animation: sheet-up 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-fade {
+  animation: fade-in 0.15s ease-out;
 }

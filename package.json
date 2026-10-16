@@ -1,12 +1,14 @@
 {
-  "name": "stinu-clone",
-  "version": "0.1.0",
+  "name": "stinu-replica",
+  "version": "1.0.0",
+  "description": "Web replica of the STINU Position Size Calculator Android app — reverse-engineered, byte-exact verified.",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "verify": "node verify2.mjs"
   },
   "dependencies": {
     "next": "16.4.2",
@@ -20,6 +22,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.2",
+    "playwright": "^1.64.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
